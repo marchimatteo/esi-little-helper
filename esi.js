@@ -1,3 +1,5 @@
+const fetch = require("node-fetch");
+
 class Esi {
   constructor() {
     this._limitResetDefault = 60;
@@ -12,7 +14,7 @@ class Esi {
   /**
    * @throws {Error}
    */
-  async call(callProps) {
+  async call(callProps, callback = null) {
     if (this._isErrorWindowBroken()) {
       throw new Error('Error window broken')
     }
@@ -37,7 +39,7 @@ class Esi {
         let { status, statusText, headers } = response;
         if (status === 420) { // Error limited
           this._breakErrorWindow();
-          throw new Error(`Error ${status} from ESI: ${statusText}`);
+          throw new Error(`ESI ${status}: ${statusText}`);
         }
 
         let mustIncrementError = true;
@@ -48,18 +50,69 @@ class Esi {
 
         if (!response.ok) {
           this._flagError(mustIncrementError);
+          throw new Error(`ESI ${status}: ${statusText}`);
+        }
 
-          throw new Error(`Error ${status} from ESI: ${statusText}`);
+        if (callback !== null) {
+          this._processResponse(response, callback);
         }
 
         return response;
       })
-      .then(data => {
-        return data;
-      })
       .catch(e => {
         throw new Error(e)
       });
+  }
+
+  /**
+   * This function fetch from esi all the pages of a given call, the calls are
+   * execute asynchronously 20 at a time.
+   * If a callback function is provided, the data from the responses will be
+   * sent to it.
+   *
+   * @param {CallBuilder} callProps
+   * @param {function} [callback=null]
+   * @returns {Promise<[]>}
+   */
+  async paginatedCall(callProps, callback = null) {
+    let responses = [];
+
+    let firstCall = await this.call(callProps);
+    responses.push(firstCall);
+
+    let pages = firstCall.headers.get('x-pages');
+    if (pages === null) {
+      return responses;
+    }
+
+    let oldPath = callProps.path;
+    let newPath = (page) => `${oldPath}?page=${page}`;
+    let page = 2;
+    while (page <= pages) {
+      let additionalPages = [];
+      for (let i = 0; i <= 20 && page <= pages; i++, page++) {
+        let paginatedCallProps = {...callProps};
+        paginatedCallProps.path = newPath(page);
+        additionalPages.push(this.call(paginatedCallProps));
+      }
+
+      await Promise.all(additionalPages)
+        .then((results) => {
+          results.forEach((result) => responses.push(result));
+        });
+    }
+
+    if (callback !== null) {
+      responses.forEach(response => {
+        this._processResponse(response, callback);
+      })
+    }
+
+    return responses;
+  }
+
+  _processResponse(response, callback) {
+    response.json().then(data => callback(data));
   }
 
   _hasErrorLimitHeaders(headers) {
@@ -240,6 +293,15 @@ class UniverseNames extends CallBuilder {
   }
 }
 
+class MarketOrders extends CallBuilder {
+  constructor(regionID) {
+    super(
+        'GET',
+        `/v1/markets/${regionID}/orders/`
+    );
+  }
+}
+
 module.exports = {
   Esi,
   CallBuilder,
@@ -252,5 +314,6 @@ module.exports = {
   Station,
   Structure,
   Factions,
-  UniverseNames
+  UniverseNames,
+  MarketOrders
 };
