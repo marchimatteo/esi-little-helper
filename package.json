@@ -1,14 +1,22 @@
 {
   "name": "esi-little-helper",
   "version": "1.0.0",
-  "description": "",
+  "description": "A Fetch wrapper to interact with the EVE Online API",
   "main": "index.js",
   "scripts": {
     "test": "jest test/"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "eve",
+    "online",
+    "eveonline",
+    "eve online",
+    "eve-online",
+    "esi",
+    "api"
+  ],
+  "author": "Matteo Marchi",
+  "license": "MIT",
   "devDependencies": {
     "jest": "^26.1.0",
     "jest-fetch-mock": "^3.0.3"
@@ -18,5 +26,8 @@
     "setupFiles": [
       "./test/setupJest.js"
     ]
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.0"
   }
 }
