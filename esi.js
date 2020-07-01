@@ -14,7 +14,7 @@ class Esi {
   /**
    * @throws {Error}
    */
-  async call(callProps, callback = null) {
+  call(callProps, callback = null) {
     if (this._isErrorWindowBroken()) {
       throw new Error('Error window broken')
     }
@@ -34,7 +34,7 @@ class Esi {
       fetchParams.body = body;
     }
 
-    return fetch(path, fetchParams)
+    let response = fetch(path, fetchParams)
       .then(response => {
         let { status, statusText, headers } = response;
         if (status === 420) { // Error limited
@@ -62,6 +62,8 @@ class Esi {
       .catch(e => {
         throw new Error(e)
       });
+
+    return new Result([response]);
   }
 
   /**
@@ -72,19 +74,29 @@ class Esi {
    *
    * @param {CallBuilder} callProps
    * @param {function} [callback=null]
-   * @returns {Promise<[]>}
+   * @returns {Result}
    */
-  async paginatedCall(callProps, callback = null) {
+  paginatedCall(callProps, callback = null) {
     let responses = [];
+    let firstResult = this.call(callProps);
+    let firstResponse = firstResult.firstResponse;
+    responses.push(firstResponse);
 
-    let firstCall = await this.call(callProps);
-    responses.push(firstCall);
+    firstResponse.then(response => {
+      let pages = response.headers.get('x-pages');
+      if (pages === null || pages === 1) {
+        console.log(firstResult);
+        return firstResult;
+      }
 
-    let pages = firstCall.headers.get('x-pages');
-    if (pages === null) {
-      return responses;
-    }
+      //return this.resolvePagination(callProps, firstResponse, pages);
+    })
 
+    return new Result(responses);
+  }
+
+  resolvePagination(callProps, firstResponse, pages) {
+    let responses = [];
     let oldPath = callProps.path;
     let newPath = (page) => `${oldPath}?page=${page}`;
     let page = 2;
@@ -93,13 +105,14 @@ class Esi {
       for (let i = 0; i <= 20 && page <= pages; i++, page++) {
         let paginatedCallProps = {...callProps};
         paginatedCallProps.path = newPath(page);
-        additionalPages.push(this.call(paginatedCallProps));
+        let result = this.call(paginatedCallProps)
+        additionalPages.push(result.firstResponse);
       }
 
-      await Promise.all(additionalPages)
-        .then((results) => {
-          results.forEach((result) => responses.push(result));
-        });
+      Promise.all(additionalPages)
+      .then((results) => {
+        results.forEach((result) => responses.push(result));
+      });
     }
 
     if (callback !== null) {
@@ -108,7 +121,30 @@ class Esi {
       })
     }
 
-    return responses;
+    return new Result(responses);
+  }
+
+  async responsesToJson(responses) {
+    if (!Array.isArray(responses)) {
+      responses = [responses];
+    }
+
+    let promises = [];
+    responses.forEach(response => {
+      let newPromise = response.json();
+      promises.push(newPromise);
+    })
+
+
+    return Promise.all(promises)
+      .then(promises => {
+        let result = [];
+        let orderCount = 0;
+        for (let data of promises) {
+          data.forEach(data => result.push(data));
+        }
+        return result;
+      });
   }
 
   _processResponse(response, callback) {
@@ -175,6 +211,36 @@ class Esi {
 
   _nowInSeconds() {
     return Date.now() / 1000;
+  }
+}
+
+class Result {
+  constructor(responses) {
+    this.responses = responses;
+    this.firstResponse = this.responses[0];
+  }
+
+  json() {
+    let promises = [];
+    this.responses.forEach(response => {
+      promises.push(
+          response.then(response => response.json())
+      );
+    });
+
+    return Promise.all(promises)
+      .then(promises => {
+        if (promises.length === 1) {
+          return promises[0];
+        }
+
+        let result = [];
+        for (let data of promises) {
+          data.forEach(data => result.push(data));
+        }
+
+        return result;
+      });
   }
 }
 
