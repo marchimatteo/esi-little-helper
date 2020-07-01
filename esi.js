@@ -20,12 +20,11 @@ class Esi {
     return new Result(responses);
   }
 
-  _fetch(callProps, previousResponses = []) {
+  _fetch(callProps, paginating = false) {
     if (this._isErrorWindowBroken()) {
       throw new Error('Error window broken')
     }
 
-    let responses = previousResponses;
     let { method, path, token = null, body = null} = callProps;
 
     let fetchParams = {};
@@ -60,16 +59,30 @@ class Esi {
           throw new Error(`ESI ${status}: ${statusText}`);
         }
 
-        responses.push(response);
+        // When _fetch is paginating it means it's been called within _fetch,
+        // in that case we return a single response and not an array of
+        // responses.
+        if (paginating) {
+          return response;
+        }
 
-        // PAGINATION
+        let responses = [response];
+
+        // Pagination
         if (callProps.totalPages === null) {
           let pages = response.headers.get('x-pages');
-          callProps.totalPages = pages === null ? 1 : pages;
-        }
-        if (callProps.totalPages > callProps.currentPage) {
-          callProps.incrementCurrentPage();
-          return this._fetch(callProps, responses);
+          pages = pages === null ? 1 : Number(pages);
+          callProps.totalPages = pages;
+
+          if (pages > 1) {
+            let oldPath = callProps.path;
+            let newPath = page => `${oldPath}?page=${page}`;
+            for (let page = 2; page <= pages; page++) {
+              let paginatedCallProps = {...callProps};
+              paginatedCallProps.path = newPath(page);
+              responses.push(this._fetch(paginatedCallProps, true));
+            }
+          }
         }
 
         return responses;
@@ -235,24 +248,32 @@ class Result {
 
   json() {
     let promises = [];
-    this.responses.forEach(response => {
-      promises.push(
-          response.then(response => response.json())
-      );
-    });
+    return this.responses
+      .then(responses => {
+        // The first response is a special case because its Promise is already
+        // fulfilled.
+        let firstResponse = responses.shift();
+        promises.push(firstResponse.json());
 
-    return Promise.all(promises)
-      .then(promises => {
-        if (promises.length === 1) {
-          return promises[0];
-        }
+        responses.forEach(response => {
+          promises.push(
+              response.then(data => data.json())
+          );
+        })
 
-        let result = [];
-        for (let data of promises) {
-          data.forEach(data => result.push(data));
-        }
+        return Promise.all(promises)
+          .then(promises => {
+            if (promises.length === 1) {
+              return promises[0];
+            }
 
-        return result;
+            let result = [];
+            for (let data of promises) {
+              data.forEach(data => result.push(data));
+            }
+
+            return result;
+          });
       });
   }
 }
@@ -260,23 +281,10 @@ class Result {
 class CallBuilder {
   constructor(method, path) {
     this.totalPages = null;
-    this.currentPage = 1;
     this.method = method;
-    this.basePath = path;
+    this.path = `https://esi.evetech.net${path}`;
     this.token = null;
     this.body = null;
-  }
-
-  get path() {
-    return `https://esi.evetech.net${this.basePath}${this.query}`;
-  }
-
-  get query() {
-    return this.currentPage > 1 ? `?page=${this.currentPage}` : '';
-  }
-
-  incrementCurrentPage() {
-    this.currentPage++;
   }
 
   setToken(token) {
