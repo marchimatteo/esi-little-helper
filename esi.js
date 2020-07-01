@@ -14,11 +14,18 @@ class Esi {
   /**
    * @throws {Error}
    */
-  call(callProps, callback = null) {
+  call(callProps) {
+    let responses = this._fetch(callProps);
+
+    return new Result(responses);
+  }
+
+  _fetch(callProps, previousResponses = []) {
     if (this._isErrorWindowBroken()) {
       throw new Error('Error window broken')
     }
 
+    let responses = previousResponses;
     let { method, path, token = null, body = null} = callProps;
 
     let fetchParams = {};
@@ -34,7 +41,7 @@ class Esi {
       fetchParams.body = body;
     }
 
-    let response = fetch(path, fetchParams)
+    return fetch(path, fetchParams)
       .then(response => {
         let { status, statusText, headers } = response;
         if (status === 420) { // Error limited
@@ -53,17 +60,23 @@ class Esi {
           throw new Error(`ESI ${status}: ${statusText}`);
         }
 
-        if (callback !== null) {
-          this._processResponse(response, callback);
+        responses.push(response);
+
+        // PAGINATION
+        if (callProps.totalPages === null) {
+          let pages = response.headers.get('x-pages');
+          callProps.totalPages = pages === null ? 1 : pages;
+        }
+        if (callProps.totalPages > callProps.currentPage) {
+          callProps.incrementCurrentPage();
+          return this._fetch(callProps, responses);
         }
 
-        return response;
+        return responses;
       })
       .catch(e => {
         throw new Error(e)
       });
-
-    return new Result([response]);
   }
 
   /**
@@ -246,10 +259,24 @@ class Result {
 
 class CallBuilder {
   constructor(method, path) {
+    this.totalPages = null;
+    this.currentPage = 1;
     this.method = method;
-    this.path = `https://esi.evetech.net${path}`;
+    this.basePath = path;
     this.token = null;
     this.body = null;
+  }
+
+  get path() {
+    return `https://esi.evetech.net${this.basePath}${this.query}`;
+  }
+
+  get query() {
+    return this.currentPage > 1 ? `?page=${this.currentPage}` : '';
+  }
+
+  incrementCurrentPage() {
+    this.currentPage++;
   }
 
   setToken(token) {
