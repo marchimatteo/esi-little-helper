@@ -12,7 +12,8 @@ class Esi {
   }
 
   /**
-   * @throws {Error}
+   * @return {Result}
+   * @throws {Error} When the call fail or the error window is broken.
    */
   call(callProps) {
     let responses = this._fetch(callProps);
@@ -22,7 +23,7 @@ class Esi {
 
   _fetch(callProps, paginating = false) {
     if (this._isErrorWindowBroken()) {
-      throw new Error('Error window broken')
+      return Promise.reject(new Error('Error window broken'));
     }
 
     let { method, path, token = null, body = null} = callProps;
@@ -45,7 +46,7 @@ class Esi {
         let { status, statusText, headers } = response;
         if (status === 420) { // Error limited
           this._breakErrorWindow();
-          throw new Error(`ESI ${status}: ${statusText}`);
+          throw new Error(`ESI ${status} - ${statusText}`);
         }
 
         let mustIncrementError = true;
@@ -56,7 +57,7 @@ class Esi {
 
         if (!response.ok) {
           this._flagError(mustIncrementError);
-          throw new Error(`ESI ${status}: ${statusText}`);
+          throw new Error(`ESI ${status} - ${statusText}`);
         }
 
         // When _fetch is paginating it means it's been called within _fetch,
@@ -90,91 +91,6 @@ class Esi {
       .catch(e => {
         throw new Error(e)
       });
-  }
-
-  /**
-   * This function fetch from esi all the pages of a given call, the calls are
-   * execute asynchronously 20 at a time.
-   * If a callback function is provided, the data from the responses will be
-   * sent to it.
-   *
-   * @param {CallBuilder} callProps
-   * @param {function} [callback=null]
-   * @returns {Result}
-   */
-  paginatedCall(callProps, callback = null) {
-    let responses = [];
-    let firstResult = this.call(callProps);
-    let firstResponse = firstResult.firstResponse;
-    responses.push(firstResponse);
-
-    firstResponse.then(response => {
-      let pages = response.headers.get('x-pages');
-      if (pages === null || pages === 1) {
-        console.log(firstResult);
-        return firstResult;
-      }
-
-      //return this.resolvePagination(callProps, firstResponse, pages);
-    })
-
-    return new Result(responses);
-  }
-
-  resolvePagination(callProps, firstResponse, pages) {
-    let responses = [];
-    let oldPath = callProps.path;
-    let newPath = (page) => `${oldPath}?page=${page}`;
-    let page = 2;
-    while (page <= pages) {
-      let additionalPages = [];
-      for (let i = 0; i <= 20 && page <= pages; i++, page++) {
-        let paginatedCallProps = {...callProps};
-        paginatedCallProps.path = newPath(page);
-        let result = this.call(paginatedCallProps)
-        additionalPages.push(result.firstResponse);
-      }
-
-      Promise.all(additionalPages)
-      .then((results) => {
-        results.forEach((result) => responses.push(result));
-      });
-    }
-
-    if (callback !== null) {
-      responses.forEach(response => {
-        this._processResponse(response, callback);
-      })
-    }
-
-    return new Result(responses);
-  }
-
-  async responsesToJson(responses) {
-    if (!Array.isArray(responses)) {
-      responses = [responses];
-    }
-
-    let promises = [];
-    responses.forEach(response => {
-      let newPromise = response.json();
-      promises.push(newPromise);
-    })
-
-
-    return Promise.all(promises)
-      .then(promises => {
-        let result = [];
-        let orderCount = 0;
-        for (let data of promises) {
-          data.forEach(data => result.push(data));
-        }
-        return result;
-      });
-  }
-
-  _processResponse(response, callback) {
-    response.json().then(data => callback(data));
   }
 
   _hasErrorLimitHeaders(headers) {
@@ -242,13 +158,17 @@ class Esi {
 
 class Result {
   constructor(responses) {
-    this.responses = responses;
-    this.firstResponse = this.responses[0];
+    this._responses = responses;
   }
 
+  /**
+   * Return the body of the all the Responses, in json format.
+   *
+   * @returns {Promise<any>}
+   */
   json() {
     let promises = [];
-    return this.responses
+    return this._responses
       .then(responses => {
         // The first response is a special case because its Promise is already
         // fulfilled.
@@ -275,6 +195,34 @@ class Result {
             return result;
           });
       });
+  }
+
+  /**
+   * Returns the Headers object of the first response.
+   *
+   * @returns {Promise<Headers>}
+   */
+  headers() {
+    return this._responses
+      .then(responses => responses[0].headers);
+  }
+
+  /**
+   * Return the first Response object.
+   *
+   * @returns {Promise<Response>}
+   */
+  response() {
+    return this._responses
+      .then(responses => responses[0]);
+  }
+
+  /**
+   * @returns {Promise<boolean>}
+   */
+  hasMultiplePages() {
+    return this._responses
+      .then(responses => responses.length > 1);
   }
 }
 
