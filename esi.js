@@ -227,12 +227,12 @@ class Result {
 }
 
 class CallBuilder {
-  constructor(method, path) {
+  constructor(method, path, token = null, body = null) {
     this.totalPages = null;
     this.method = method;
     this.path = `https://esi.evetech.net${path}`;
-    this.token = null;
-    this.body = null;
+    this.token = token;
+    this.body = body;
   }
 
   setToken(token) {
@@ -248,121 +248,7 @@ class CallBuilder {
   }
 }
 
-class Character extends CallBuilder {
-  constructor(charID) {
-    super(
-        'GET',
-        `/v4/characters/${charID}/`
-    );
-  }
-}
-
-class CharacterLocation extends CallBuilder {
-  constructor(charID, token) {
-    super(
-        'GET',
-        `/v2/characters/${charID}/location/`
-    );
-    this.token = token;
-  }
-}
-
-class CharacterOnline extends CallBuilder {
-  constructor(charID, token) {
-    super(
-        'GET',
-        `/v3/characters/${charID}/online/`
-    );
-    this.token = token;
-  }
-}
-
-class Corporation extends CallBuilder {
-  constructor(corpID) {
-    super(
-        'GET',
-        `/v4/corporations/${corpID}/`
-    );
-  }
-}
-
-class Alliance extends CallBuilder {
-  constructor(id) {
-    super(
-        'GET',
-        `/v3/alliances/${id}/`
-    );
-  }
-}
-
-class System extends CallBuilder {
-  constructor(id) {
-    super(
-        'GET',
-        `/v4/universe/systems/${id}/`
-    );
-  }
-}
-
-class Station extends CallBuilder {
-  constructor(id) {
-    super(
-        'GET',
-        `/v2/universe/stations/${id}/`
-    );
-  }
-}
-
-class Structure extends CallBuilder {
-  constructor(id, token) {
-    super(
-        'POST',
-        `/v2/universe/structures/${id}/`
-    );
-    this.token = token;
-  }
-}
-
-class Factions extends CallBuilder {
-  constructor() {
-    super(
-        'GET',
-        `/v2/universe/factions/`
-    );
-  }
-}
-
-class UniverseNames extends CallBuilder {
-  constructor(ids) {
-    super(
-        'POST',
-        `/v3/universe/names/`
-    );
-    this.body = JSON.stringify(ids);
-  }
-}
-
-class MarketOrders extends CallBuilder {
-  constructor(regionID) {
-    super(
-        'GET',
-        `/v1/markets/${regionID}/orders/`
-    );
-  }
-}
-
 module.exports = {
   Esi,
   CallBuilder,
-  Character,
-  CharacterLocation,
-  CharacterOnline,
-  Corporation,
-  Alliance,
-  System,
-  Station,
-  Structure,
-  Factions,
-  UniverseNames,
-  MarketOrders
 };
