@@ -1,6 +1,6 @@
 {
   "name": "esi-little-helper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A Fetch wrapper to interact with the EVE Online API",
   "main": "index.js",
   "scripts": {
