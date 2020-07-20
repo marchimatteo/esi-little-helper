@@ -93,6 +93,57 @@ class Esi {
       });
   }
 
+  /**
+   * This function fetch from esi all the pages of a given call, the calls are
+   * execute asynchronously 20 at a time.
+   * If a callback function is provided, the data from the responses will be
+   * sent to it.
+   *
+   * @param {CallBuilder} callProps
+   * @param {function} [callback=null]
+   * @returns {Promise<[]>}
+   */
+  async paginatedCall(callProps, callback = null) {
+    let responses = [];
+
+    let firstCall = await this.call(callProps);
+    responses.push(firstCall);
+
+    let pages = firstCall.headers.get('x-pages');
+    if (pages === null) {
+      return responses;
+    }
+
+    let oldPath = callProps.path;
+    let newPath = (page) => `${oldPath}?page=${page}`;
+    let page = 2;
+    while (page <= pages) {
+      let additionalPages = [];
+      for (let i = 0; i <= 20 && page <= pages; i++, page++) {
+        let paginatedCallProps = {...callProps};
+        paginatedCallProps.path = newPath(page);
+        additionalPages.push(this.call(paginatedCallProps));
+      }
+
+      await Promise.all(additionalPages)
+        .then((results) => {
+          results.forEach((result) => responses.push(result));
+        });
+    }
+
+    if (callback !== null) {
+      responses.forEach(response => {
+        this._processResponse(response, callback);
+      })
+    }
+
+    return responses;
+  }
+
+  _processResponse(response, callback) {
+    response.json().then(data => callback(data));
+  }
+
   _hasErrorLimitHeaders(headers) {
     let limitReset = headers.get('x-esi-error-limit-reset');
     let limitRemain = headers.get('x-esi-error-limit-remain');
@@ -245,6 +296,15 @@ class CallBuilder {
     this.body = body;
 
     return this;
+  }
+}
+
+class MarketOrders extends CallBuilder {
+  constructor(regionID) {
+    super(
+        'GET',
+        `/v1/markets/${regionID}/orders/`
+    );
   }
 }
 
