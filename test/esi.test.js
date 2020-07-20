@@ -28,7 +28,7 @@ describe('Testing fetch', () => {
     let call = new CallBuilder('GET', '/v1/universe/ancestries/');
     let esi = new Esi();
 
-    await expect(esi.call(call)).rejects.toThrow();
+    await expect(esi.call(call).json()).rejects.toThrow();
   });
 
   test("throw on error limit received", async () => {
@@ -40,8 +40,8 @@ describe('Testing fetch', () => {
     let call = new CallBuilder('GET', '/v1/universe/ancestries/');
     let esi = new Esi();
 
-    await expect(esi.call(call)).rejects
-      .toThrowError('Error 420 from ESI: error limited yo');
+    await expect(esi.call(call).json()).rejects
+      .toThrowError('Error: ESI 420 - error limited yo');
   });
 
   test("throw on not found error", async () => {
@@ -53,8 +53,8 @@ describe('Testing fetch', () => {
     let call = new CallBuilder('GET', '/v1/universe/ancestries/');
     let esi = new Esi();
 
-    await expect(esi.call(call)).rejects
-      .toThrowError('Error 404 from ESI: not found');
+    await expect(esi.call(call).json()).rejects
+      .toThrowError('Error: ESI 404 - not found');
   });
 
   test("calls are blocked after 100 errors in 60 seconds", async () => {
@@ -66,17 +66,17 @@ describe('Testing fetch', () => {
     let call = new CallBuilder('GET', '/v1/universe/ancestries/');
     let esi = new Esi();
 
-    let responses = [];
+    let promises = [];
     for (let i = 0; i <= 100; i++) {
-      responses.push(esi.call(call));
+      promises.push(esi.call(call).json());
     }
 
     try {
-      await Promise.all(responses)
-      .then();
+      await Promise.all(promises)
+        .then();
     } catch(e) {}
 
-    await expect(esi.call(call)).rejects
+    await expect(esi.call(call).json()).rejects
       .toThrowError('Error window broken');
   });
 
@@ -89,11 +89,11 @@ describe('Testing fetch', () => {
     let call = new CallBuilder('GET', '/v1/universe/ancestries/');
     let esi = new Esi();
     try {
-      await esi.call(call);
+      await esi.call(call).json();
     } catch(e) {}
 
-    await expect(esi.call(call)).rejects
-    .toThrowError('Error window broken');
+    await expect(esi.call(call).json()).rejects
+      .toThrowError('Error window broken');
   });
 
   test("error limits are registered from headers", async () => {
@@ -109,8 +109,7 @@ describe('Testing fetch', () => {
 
     let call = new CallBuilder('GET', '/v1/universe/ancestries/');
     let esi = new Esi();
-    let result = await esi.call(call);
-    await result.json();
+    let result = await esi.call(call).json();
 
     await expect(esi.limitReset).toBe("40");
     await expect(esi.limitRemain).toBe("70");
