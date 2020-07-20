@@ -12,11 +12,18 @@ class Esi {
   }
 
   /**
-   * @throws {Error}
+   * @return {Result}
+   * @throws {Error} When the call fail or the error window is broken.
    */
-  async call(callProps, callback = null) {
+  call(callProps) {
+    let responses = this._fetch(callProps);
+
+    return new Result(responses);
+  }
+
+  _fetch(callProps, paginating = false) {
     if (this._isErrorWindowBroken()) {
-      throw new Error('Error window broken')
+      return Promise.reject(new Error('Error window broken'));
     }
 
     let { method, path, token = null, body = null} = callProps;
@@ -39,7 +46,7 @@ class Esi {
         let { status, statusText, headers } = response;
         if (status === 420) { // Error limited
           this._breakErrorWindow();
-          throw new Error(`ESI ${status}: ${statusText}`);
+          throw new Error(`ESI ${status} - ${statusText}`);
         }
 
         let mustIncrementError = true;
@@ -50,14 +57,36 @@ class Esi {
 
         if (!response.ok) {
           this._flagError(mustIncrementError);
-          throw new Error(`ESI ${status}: ${statusText}`);
+          throw new Error(`ESI ${status} - ${statusText}`);
         }
 
-        if (callback !== null) {
-          this._processResponse(response, callback);
+        // When _fetch is paginating it means it's been called within _fetch,
+        // in that case we return a single response and not an array of
+        // responses.
+        if (paginating) {
+          return response;
         }
 
-        return response;
+        let responses = [response];
+
+        // Pagination
+        if (callProps.totalPages === null) {
+          let pages = response.headers.get('x-pages');
+          pages = pages === null ? 1 : Number(pages);
+          callProps.totalPages = pages;
+
+          if (pages > 1) {
+            let oldPath = callProps.path;
+            let newPath = page => `${oldPath}?page=${page}`;
+            for (let page = 2; page <= pages; page++) {
+              let paginatedCallProps = {...callProps};
+              paginatedCallProps.path = newPath(page);
+              responses.push(this._fetch(paginatedCallProps, true));
+            }
+          }
+        }
+
+        return responses;
       })
       .catch(e => {
         throw new Error(e)
@@ -178,12 +207,83 @@ class Esi {
   }
 }
 
+class Result {
+  constructor(responses) {
+    this._responses = responses;
+  }
+
+  /**
+   * Return the body of the all the Responses, in json format.
+   *
+   * @returns {Promise<any>}
+   */
+  json() {
+    let promises = [];
+    return this._responses
+      .then(responses => {
+        // The first response is a special case because its Promise is already
+        // fulfilled.
+        let firstResponse = responses.shift();
+        promises.push(firstResponse.json());
+
+        responses.forEach(response => {
+          promises.push(
+              response.then(data => data.json())
+          );
+        })
+
+        return Promise.all(promises)
+          .then(promises => {
+            if (promises.length === 1) {
+              return promises[0];
+            }
+
+            let result = [];
+            for (let data of promises) {
+              data.forEach(data => result.push(data));
+            }
+
+            return result;
+          });
+      });
+  }
+
+  /**
+   * Returns the Headers object of the first response.
+   *
+   * @returns {Promise<Headers>}
+   */
+  headers() {
+    return this._responses
+      .then(responses => responses[0].headers);
+  }
+
+  /**
+   * Return the first Response object.
+   *
+   * @returns {Promise<Response>}
+   */
+  response() {
+    return this._responses
+      .then(responses => responses[0]);
+  }
+
+  /**
+   * @returns {Promise<boolean>}
+   */
+  hasMultiplePages() {
+    return this._responses
+      .then(responses => responses.length > 1);
+  }
+}
+
 class CallBuilder {
-  constructor(method, path) {
+  constructor(method, path, token = null, body = null) {
+    this.totalPages = null;
     this.method = method;
     this.path = `https://esi.evetech.net${path}`;
-    this.token = null;
-    this.body = null;
+    this.token = token;
+    this.body = body;
   }
 
   setToken(token) {
@@ -199,100 +299,6 @@ class CallBuilder {
   }
 }
 
-class Character extends CallBuilder {
-  constructor(charID) {
-    super(
-        'GET',
-        `/v4/characters/${charID}/`
-    );
-  }
-}
-
-class CharacterLocation extends CallBuilder {
-  constructor(charID, token) {
-    super(
-        'GET',
-        `/v2/characters/${charID}/location/`
-    );
-    this.token = token;
-  }
-}
-
-class CharacterOnline extends CallBuilder {
-  constructor(charID, token) {
-    super(
-        'GET',
-        `/v3/characters/${charID}/online/`
-    );
-    this.token = token;
-  }
-}
-
-class Corporation extends CallBuilder {
-  constructor(corpID) {
-    super(
-        'GET',
-        `/v4/corporations/${corpID}/`
-    );
-  }
-}
-
-class Alliance extends CallBuilder {
-  constructor(id) {
-    super(
-        'GET',
-        `/v3/alliances/${id}/`
-    );
-  }
-}
-
-class System extends CallBuilder {
-  constructor(id) {
-    super(
-        'GET',
-        `/v4/universe/systems/${id}/`
-    );
-  }
-}
-
-class Station extends CallBuilder {
-  constructor(id) {
-    super(
-        'GET',
-        `/v2/universe/stations/${id}/`
-    );
-  }
-}
-
-class Structure extends CallBuilder {
-  constructor(id, token) {
-    super(
-        'POST',
-        `/v2/universe/structures/${id}/`
-    );
-    this.token = token;
-  }
-}
-
-class Factions extends CallBuilder {
-  constructor() {
-    super(
-        'GET',
-        `/v2/universe/factions/`
-    );
-  }
-}
-
-class UniverseNames extends CallBuilder {
-  constructor(ids) {
-    super(
-        'POST',
-        `/v3/universe/names/`
-    );
-    this.body = JSON.stringify(ids);
-  }
-}
-
 class MarketOrders extends CallBuilder {
   constructor(regionID) {
     super(
@@ -305,15 +311,4 @@ class MarketOrders extends CallBuilder {
 module.exports = {
   Esi,
   CallBuilder,
-  Character,
-  CharacterLocation,
-  CharacterOnline,
-  Corporation,
-  Alliance,
-  System,
-  Station,
-  Structure,
-  Factions,
-  UniverseNames,
-  MarketOrders
 };
