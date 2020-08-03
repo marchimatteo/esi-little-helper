@@ -32,7 +32,7 @@ class Esi {
     fetchParams.method = method;
     fetchParams.headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'esi-little-helper'
+      'X-User-Agent': 'esi-little-helper'
     }
     if (token !== null) {
       fetchParams.headers['Authorization'] = `Bearer ${token}`;
