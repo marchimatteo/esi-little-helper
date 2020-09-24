@@ -23,7 +23,7 @@ Returns a **Result** object.
 
 Ideally a single instance of the Esi class should be used for all the calls, to better keep track of API errors and share the same error window information.
 ```javascript
-let esi = new Esi();
+let esi = new Esi('my user agent');
 result = esi.call(params);
 ```
 ### Result
@@ -49,7 +49,7 @@ result.response()
 ## Example
 First initialize the Esi class and create the specific parameter object containing the necessary properties, such as method and path. 
 ```javascript
-let esi = new Esi();
+let esi = new Esi('my app name');
 let params = new CallBuilder(
     'GET',
     '/v4/universe/systems/30000142/'

@@ -1,6 +1,6 @@
 {
   "name": "esi-little-helper",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A Fetch wrapper to interact with the EVE Online API",
   "main": "index.js",
   "scripts": {
@@ -15,8 +15,16 @@
     "esi",
     "api"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marchimatteo/esi-little-helper.git"
+  },
   "author": "Matteo Marchi",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/marchimatteo/esi-little-helper/issues"
+  },
+  "homepage": "https://github.com/marchimatteo/esi-little-helper#readme",
   "devDependencies": {
     "jest": "^26.1.0",
     "jest-fetch-mock": "^3.0.3"
