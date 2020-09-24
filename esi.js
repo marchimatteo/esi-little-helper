@@ -1,7 +1,8 @@
 const fetch = require("node-fetch");
 
 class Esi {
-  constructor() {
+  constructor(userAgent = 'esi-little-helper') {
+    this._userAgent = userAgent;
     this._limitResetDefault = 60;
     this._limitRemainDefault = 100;
     this._errorWindowBrokenSinceDefault = null;
@@ -32,7 +33,7 @@ class Esi {
     fetchParams.method = method;
     fetchParams.headers = {
       'Content-Type': 'application/json',
-      'X-User-Agent': 'esi-little-helper'
+      'X-User-Agent': this._userAgent
     }
     if (token !== null) {
       fetchParams.headers['Authorization'] = `Bearer ${token}`;
