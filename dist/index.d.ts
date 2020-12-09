@@ -1,1 +1,3 @@
-export declare function myFunction(): string;
+declare class Esi {
+}
+export { Esi };
