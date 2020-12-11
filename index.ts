@@ -10,7 +10,7 @@ class Esi {
   }
 
   public async request(props: RequestParameters): Promise<Response> {
-    let {method, path, urlSearchParams = null, token = null, body = null} = props;
+    let {method, path, urlSearchParams = null, token = null, body = null, throws = true} = props;
     if (this.errorManager.getErrorRemain() < 1) {
       throw new Error('No remaining error in the current window, call blocked');
     }
@@ -38,11 +38,23 @@ class Esi {
       response = await fetch(`https://esi.evetech.net${path}${query}`, fetchProps);
     } catch (e) {
       this.errorManager.flagError();
-      throw new Error(e);
+      if (throws) {
+        throw new Error(e);
+      }
+
+      return new Response();
     }
+
     if (!response.ok) {
-      this.errorManager.flagError(response.headers);
-      throw new Error(`Error ${response.status}: ${response.statusText}`);
+      if (response.status === 420) { // Error limited
+        this.errorManager.flagErrorLimited(response.headers);
+      } else {
+        this.errorManager.flagError(response.headers);
+      }
+
+      if (throws) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
     }
 
     return response;
@@ -96,12 +108,20 @@ class ErrorManager {
     return this.limitReset;
   }
 
-  public flagError(headers: Headers | null = null) {
+  public flagError(headers: Headers | null = null): void {
     if (headers !== null && headers.get('x-esi-error-limit-reset') !== null) {
       this.limitReset = Number(headers.get('x-esi-error-limit-reset'));
     }
 
     this.limitRemain -= 1;
+  }
+
+  public flagErrorLimited(headers: Headers | null = null): void {
+    if (headers !== null && headers.get('x-esi-error-limit-reset') !== null) {
+      this.limitReset = Number(headers.get('x-esi-error-limit-reset'));
+    }
+
+    this.limitRemain = 0;
   }
 
   private reset(): void {
@@ -116,6 +136,7 @@ interface RequestParameters {
   urlSearchParams?: URLSearchParams;
   token?: string;
   body?: string;
+  throws?: boolean;
 }
 
 export { Esi };
