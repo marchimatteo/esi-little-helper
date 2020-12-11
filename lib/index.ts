@@ -1,7 +1,7 @@
-import fetch, {Headers, RequestInit} from 'node-fetch';
+import fetch, {Headers, RequestInit, Response} from 'node-fetch';
 
 class Esi {
-  private userAgent: string;
+  private readonly userAgent: string;
   private errorManager: ErrorManager;
 
   constructor(userAgent: string) {
@@ -9,8 +9,8 @@ class Esi {
     this.errorManager = new ErrorManager();
   }
 
-  public request(props: RequestParameters): void {
-    let {method, path, token = null, body = null} = props;
+  public async request(props: RequestParameters): Promise<Response> {
+    let {method, path, urlSearchParams = null, token = null, body = null} = props;
     if (this.errorManager.getErrorRemain() < 1) {
       throw new Error('No remaining error in the current window, call blocked');
     }
@@ -27,10 +27,49 @@ class Esi {
     if (body !== null) {
       fetchProps.body = body;
     }
+
+    let query = '';
+    if (urlSearchParams !== null) {
+      query = `?${urlSearchParams.toString()}`;
+    }
+
+    let response;
+    try {
+      response = await fetch(`https://esi.evetech.net${path}${query}`, fetchProps);
+    } catch (e) {
+      this.errorManager.flagError();
+      throw new Error(e);
+    }
+    if (!response.ok) {
+      this.errorManager.flagError(response.headers);
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    return response;
   }
 
-  public paginatedRequest(): void {
+  public async paginatedRequest(
+      props: RequestParameters
+  ): Promise<Array<Promise<Response>>> {
+    let firstResponse = await this.request(props);
+    let pages = 1;
+    let headerPages = firstResponse.headers.get('x-pages');
+    if (headerPages !== null) {
+      pages = Number(headerPages);
+    }
 
+    let responseStack: Array<Promise<Response>> = [
+        new Promise(() => firstResponse)
+    ];
+    for (let i = 2; i <= pages; i++) {
+      let urlSearchParams = props.urlSearchParams ?? new URLSearchParams();
+      urlSearchParams.set('page', String(i));
+      let newProps = {...props};
+      newProps.urlSearchParams = urlSearchParams;
+      responseStack.push(this.request(newProps));
+    }
+
+    return responseStack;
   }
 }
 
@@ -71,23 +110,12 @@ class ErrorManager {
   }
 }
 
-class RequestParameters {
-  public method: string;
-  public path: string;
-  public token?: string | null;
-  public body?: string | null;
-
-  constructor(
-      method: string,
-      path: string,
-      token: string | null = null,
-      body: string | null = null
-  ) {
-    this.method = method;
-    this.path = `https://esi.evetech.net${path}`;
-    this.token = token;
-    this.body = body;
-  }
+interface RequestParameters {
+  method: string;
+  path: string;
+  urlSearchParams?: URLSearchParams;
+  token?: string;
+  body?: string;
 }
 
 export { Esi };
